@@ -10,6 +10,32 @@ const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const ELEVENLABS_KEY = process.env.ELEVENLABS_API_KEY;
 const PORT = process.env.PORT || 3000;
 
+// Helper — call Anthropic with one retry on 529
+async function callAnthropic(body) {
+    const headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01'
+    };
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+    });
+    if (response.status === 529 || response.status === 503) {
+        // Wait 10 seconds and retry once
+        console.log('Anthropic overloaded, retrying in 10s...');
+        await new Promise(r => setTimeout(r, 10000));
+        const retry = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body)
+        });
+        return retry;
+    }
+    return response;
+}
+
 app.get('/', (req, res) => {
     res.json({ status: 'ok', service: 'SnapPray Proxy', version: '1.0.0' });
 });
@@ -20,25 +46,31 @@ app.post('/prayer', async (req, res) => {
         if (!systemPrompt || !userPrompt) {
             return res.status(400).json({ error: 'systemPrompt and userPrompt required' });
         }
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': ANTHROPIC_KEY,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-6',
-                max_tokens: 300,
-                system: systemPrompt,
-                messages: [{ role: 'user', content: userPrompt }]
-            })
+        const response = await callAnthropic({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 300,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }]
         });
+
+        // If still overloaded after retry — signal app to use library
+        if (response.status === 529 || response.status === 503) {
+            console.log('/prayer fallback triggered');
+            return res.status(200).json({ 
+                fallback: true, 
+                reason: 'service_busy' 
+            });
+        }
+
         const data = await response.json();
         res.json(data);
     } catch (err) {
         console.error('/prayer error:', err);
-        res.status(500).json({ error: err.message });
+        // Network error — also trigger fallback
+        res.status(200).json({ 
+            fallback: true, 
+            reason: 'network_error' 
+        });
     }
 });
 
@@ -48,25 +80,29 @@ app.post('/daily-prayer', async (req, res) => {
         if (!systemPrompt || !userPrompt) {
             return res.status(400).json({ error: 'systemPrompt and userPrompt required' });
         }
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': ANTHROPIC_KEY,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-6',
-                max_tokens: 300,
-                system: systemPrompt,
-                messages: [{ role: 'user', content: userPrompt }]
-            })
+        const response = await callAnthropic({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 300,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userPrompt }]
         });
+
+        if (response.status === 529 || response.status === 503) {
+            console.log('/daily-prayer fallback triggered');
+            return res.status(200).json({ 
+                fallback: true, 
+                reason: 'service_busy' 
+            });
+        }
+
         const data = await response.json();
         res.json(data);
     } catch (err) {
         console.error('/daily-prayer error:', err);
-        res.status(500).json({ error: err.message });
+        res.status(200).json({ 
+            fallback: true, 
+            reason: 'network_error' 
+        });
     }
 });
 
