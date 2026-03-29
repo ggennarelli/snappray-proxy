@@ -69,7 +69,7 @@ app.post('/vision', async (req, res) => {
         }
         const response = await callAnthropic({
             model: 'claude-haiku-4-5-20251001',
-            max_tokens: 300,
+            max_tokens: 400,
             system: systemPrompt,
             messages: [{
                 role: 'user',
