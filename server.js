@@ -33,6 +33,22 @@ async function initDB() {
             total_prayers INTEGER DEFAULT 0,
             premium_joins INTEGER DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS world_events (
+            id SERIAL PRIMARY KEY,
+            title VARCHAR(200) NOT NULL,
+            description VARCHAR(500),
+            category VARCHAR(50),
+            prayer_count INTEGER DEFAULT 0,
+            active BOOLEAN DEFAULT true,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+        INSERT INTO world_events (title, description, category) VALUES
+        ('Peace in the Middle East', 'Ongoing conflict affecting millions of lives', 'world'),
+        ('Healing for Those Affected by Natural Disasters', 'Communities rebuilding after recent storms and earthquakes', 'world'),
+        ('Wisdom for World Leaders', 'Nations facing critical decisions affecting peace and justice', 'country'),
+        ('Protection for Persecuted Christians', 'Believers facing persecution in restricted nations', 'world'),
+        ('Recovery from Economic Hardship', 'Families and communities struggling with poverty and uncertainty', 'community')
+        ON CONFLICT DO NOTHING;
     `);
     console.log('DB tables ready');
 }
@@ -210,6 +226,50 @@ app.post('/log-premium', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('/log-premium error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/world-events', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT id, title, description, category, prayer_count
+            FROM world_events
+            WHERE active = true
+            ORDER BY prayer_count DESC, created_at DESC
+            LIMIT 5
+        `);
+        res.json({ events: result.rows });
+    } catch (err) {
+        console.error('/world-events error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/log-world-prayer', async (req, res) => {
+    try {
+        const { eventId } = req.body;
+        await pool.query(
+            'UPDATE world_events SET prayer_count = prayer_count + 1 WHERE id = $1',
+            [eventId]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('/log-world-prayer error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/admin/world-events', async (req, res) => {
+    try {
+        const { title, description, category } = req.body;
+        const result = await pool.query(
+            'INSERT INTO world_events (title, description, category) VALUES ($1, $2, $3) RETURNING id',
+            [title, description || null, category || null]
+        );
+        res.json({ success: true, id: result.rows[0].id });
+    } catch (err) {
+        console.error('/admin/world-events error:', err);
         res.status(500).json({ error: err.message });
     }
 });
