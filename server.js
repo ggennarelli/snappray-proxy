@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const { Pool } = require('pg');
 require('dotenv').config();
 
 const app = express();
@@ -9,6 +10,32 @@ app.use(express.json({ limit: '10mb' }));
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 const ELEVENLABS_KEY = process.env.ELEVENLABS_API_KEY;
 const PORT = process.env.PORT || 3000;
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+async function initDB() {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS prayers (
+            id SERIAL PRIMARY KEY,
+            category VARCHAR(50),
+            subcategory VARCHAR(50),
+            style VARCHAR(20),
+            country VARCHAR(50),
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS premium_joins (
+            id SERIAL PRIMARY KEY,
+            country VARCHAR(50),
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+        CREATE TABLE IF NOT EXISTS daily_stats (
+            date DATE PRIMARY KEY,
+            total_prayers INTEGER DEFAULT 0,
+            premium_joins INTEGER DEFAULT 0
+        );
+    `);
+    console.log('DB tables ready');
+}
 
 async function callAnthropic(body) {
     const headers = {
@@ -159,6 +186,83 @@ app.post('/voice', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`SnapPray proxy running on port ${PORT}`);
+app.post('/log-prayer', async (req, res) => {
+    try {
+        const { category, subcategory, style, country } = req.body;
+        await pool.query(
+            'INSERT INTO prayers (category, subcategory, style, country) VALUES ($1, $2, $3, $4)',
+            [category || null, subcategory || null, style || null, country || null]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('/log-prayer error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.post('/log-premium', async (req, res) => {
+    try {
+        const { country } = req.body;
+        await pool.query(
+            'INSERT INTO premium_joins (country) VALUES ($1)',
+            [country || null]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('/log-premium error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/stats', async (req, res) => {
+    try {
+        const today = new Date().toISOString().slice(0, 10);
+
+        const [totalResult, todayResult, premiumTodayResult, moodResult, focusResult, othersResult] = await Promise.all([
+            pool.query('SELECT COUNT(*) FROM prayers'),
+            pool.query("SELECT COUNT(*) FROM prayers WHERE created_at::date = $1", [today]),
+            pool.query("SELECT COUNT(*) FROM premium_joins WHERE created_at::date = $1", [today]),
+            pool.query(`
+                SELECT subcategory, COUNT(*) as count
+                FROM prayers
+                WHERE category = 'feeling' AND created_at::date = $1
+                GROUP BY subcategory
+                ORDER BY count DESC
+                LIMIT 3
+            `, [today]),
+            pool.query(`
+                SELECT subcategory, COUNT(*) as count
+                FROM prayers
+                WHERE category = 'focus' AND created_at::date = $1
+                GROUP BY subcategory
+                ORDER BY count DESC
+                LIMIT 3
+            `, [today]),
+            pool.query(`
+                SELECT COUNT(*) FROM prayers
+                WHERE category = 'others' AND created_at::date = $1
+            `, [today])
+        ]);
+
+        res.json({
+            totalPrayers: parseInt(totalResult.rows[0].count),
+            todayPrayers: parseInt(todayResult.rows[0].count),
+            premiumToday: parseInt(premiumTodayResult.rows[0].count),
+            trendingMoods: moodResult.rows.map(r => r.subcategory),
+            trendingFocus: focusResult.rows.map(r => r.subcategory),
+            trendingOthers: parseInt(othersResult.rows[0].count)
+        });
+    } catch (err) {
+        console.error('/stats error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+initDB().then(() => {
+    app.listen(PORT, () => {
+        console.log(`SnapPray proxy running on port ${PORT}`);
+    });
+}).catch(err => {
+    console.error('DB init failed:', err);
+    process.exit(1);
 });
