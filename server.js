@@ -294,6 +294,28 @@ app.post('/admin/world-events', async (req, res) => {
     }
 });
 
+app.post('/admin/seed', async (req, res) => {
+    const { count = 1000 } = req.body;
+    const categories = ['feeling', 'focus', 'snap', 'others'];
+    const subcategories = ['grateful', 'anxious', 'healing', 'family', 'guidance', 'grief'];
+    const styles = ['pastoral', 'modern'];
+    for (let i = 0; i < count; i++) {
+        const daysAgo = Math.floor(Math.random() * 90);
+        const date = new Date();
+        date.setDate(date.getDate() - daysAgo);
+        await pool.query(
+            'INSERT INTO prayers (category, subcategory, style, created_at) VALUES ($1, $2, $3, $4)',
+            [
+                categories[Math.floor(Math.random() * categories.length)],
+                subcategories[Math.floor(Math.random() * subcategories.length)],
+                styles[Math.floor(Math.random() * styles.length)],
+                date.toISOString()
+            ]
+        );
+    }
+    res.json({ success: true, seeded: count });
+});
+
 app.get('/stats', async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
