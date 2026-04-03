@@ -49,6 +49,12 @@ async function initDB() {
         ('Protection for Persecuted Christians', 'Believers facing persecution in restricted nations', 'world'),
         ('Recovery from Economic Hardship', 'Families and communities struggling with poverty and uncertainty', 'community')
         ON CONFLICT DO NOTHING;
+        CREATE TABLE IF NOT EXISTS installs (
+            id SERIAL PRIMARY KEY,
+            country VARCHAR(50),
+            platform VARCHAR(20) DEFAULT 'ios',
+            created_at TIMESTAMP DEFAULT NOW()
+        );
     `);
     console.log('DB tables ready');
 }
@@ -216,6 +222,20 @@ app.post('/log-prayer', async (req, res) => {
     }
 });
 
+app.post('/log-install', async (req, res) => {
+    try {
+        const { country } = req.body;
+        await pool.query(
+            'INSERT INTO installs (country) VALUES ($1)',
+            [country || null]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('/log-install error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/log-premium', async (req, res) => {
     try {
         const { country } = req.body;
@@ -278,7 +298,7 @@ app.get('/stats', async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
 
-        const [totalResult, todayResult, premiumTodayResult, moodResult, focusResult, othersResult] = await Promise.all([
+        const [totalResult, todayResult, premiumTodayResult, moodResult, focusResult, othersResult, totalInstallsResult, weeklyInstallsResult, todayInstallsResult] = await Promise.all([
             pool.query('SELECT COUNT(*) FROM prayers'),
             pool.query("SELECT COUNT(*) FROM prayers WHERE created_at::date = $1", [today]),
             pool.query("SELECT COUNT(*) FROM premium_joins WHERE created_at::date = $1", [today]),
@@ -301,7 +321,10 @@ app.get('/stats', async (req, res) => {
             pool.query(`
                 SELECT COUNT(*) FROM prayers
                 WHERE category = 'others' AND created_at::date = $1
-            `, [today])
+            `, [today]),
+            pool.query('SELECT COUNT(*) FROM installs'),
+            pool.query("SELECT COUNT(*) FROM installs WHERE created_at > NOW() - INTERVAL '7 days'"),
+            pool.query('SELECT COUNT(*) FROM installs WHERE DATE(created_at) = CURRENT_DATE')
         ]);
 
         res.json({
@@ -310,7 +333,10 @@ app.get('/stats', async (req, res) => {
             premiumToday: parseInt(premiumTodayResult.rows[0].count),
             trendingMoods: moodResult.rows.map(r => r.subcategory),
             trendingFocus: focusResult.rows.map(r => r.subcategory),
-            trendingOthers: parseInt(othersResult.rows[0].count)
+            trendingOthers: parseInt(othersResult.rows[0].count),
+            totalInstalls: parseInt(totalInstallsResult.rows[0].count),
+            weeklyInstalls: parseInt(weeklyInstallsResult.rows[0].count),
+            todayInstalls: parseInt(todayInstallsResult.rows[0].count)
         });
     } catch (err) {
         console.error('/stats error:', err);
