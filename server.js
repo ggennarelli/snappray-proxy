@@ -222,6 +222,20 @@ app.post('/log-prayer', async (req, res) => {
     }
 });
 
+app.post('/log-iprayed', async (req, res) => {
+  try {
+    const { device_id, prayer_hash, timestamp } = req.body;
+    await pool.query(
+      'INSERT INTO iprayed_logs (device_id, prayer_hash, timestamp) VALUES ($1, $2, $3)',
+      [device_id || 'anonymous', prayer_hash || '', timestamp || new Date().toISOString()]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('log-iprayed error:', err);
+    res.json({ success: true });
+  }
+});
+
 app.post('/log-install', async (req, res) => {
     try {
         const { country } = req.body;
