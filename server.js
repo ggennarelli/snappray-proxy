@@ -334,45 +334,76 @@ app.get('/stats', async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
 
-        const [totalResult, todayResult, premiumTodayResult, moodResult, focusResult, othersResult, totalInstallsResult, weeklyInstallsResult, todayInstallsResult] = await Promise.all([
+        const [totalResult, todayResult, premiumTodayResult, moodResult, focusResult, othersResult, milestoneResult, guidedResult, scriptureResult, totalInstallsResult, weeklyInstallsResult, todayInstallsResult] = await Promise.all([
             pool.query('SELECT COUNT(*) FROM prayers'),
             pool.query("SELECT COUNT(*) FROM prayers WHERE created_at::date = $1", [today]),
             pool.query("SELECT COUNT(*) FROM premium_joins WHERE created_at::date = $1", [today]),
             pool.query(`
                 SELECT subcategory, COUNT(*) as count
                 FROM prayers
-                WHERE category = 'feeling' AND created_at::date = $1
+                WHERE category = 'feeling' AND created_at >= NOW() - INTERVAL '7 days'
                 GROUP BY subcategory
                 ORDER BY count DESC
                 LIMIT 3
-            `, [today]),
+            `),
             pool.query(`
                 SELECT subcategory, COUNT(*) as count
                 FROM prayers
-                WHERE category = 'focus' AND created_at::date = $1
+                WHERE category = 'focus' AND created_at >= NOW() - INTERVAL '7 days'
                 GROUP BY subcategory
                 ORDER BY count DESC
                 LIMIT 3
-            `, [today]),
+            `),
             pool.query(`
-                SELECT COUNT(*) FROM prayers
-                WHERE category = 'others' AND created_at::date = $1
-            `, [today]),
+                SELECT subcategory, COUNT(*) as count
+                FROM prayers
+                WHERE category = 'others' AND created_at >= NOW() - INTERVAL '7 days'
+                GROUP BY subcategory
+                ORDER BY count DESC
+                LIMIT 3
+            `),
+            pool.query(`
+                SELECT subcategory, COUNT(*) as count
+                FROM prayers
+                WHERE category = 'milestone' AND created_at >= NOW() - INTERVAL '7 days'
+                GROUP BY subcategory
+                ORDER BY count DESC
+                LIMIT 3
+            `),
+            pool.query(`
+                SELECT subcategory, COUNT(*) as count
+                FROM prayers
+                WHERE category = 'guided' AND created_at >= NOW() - INTERVAL '7 days'
+                GROUP BY subcategory
+                ORDER BY count DESC
+                LIMIT 1
+            `),
+            pool.query(`
+                SELECT subcategory, COUNT(*) as count
+                FROM prayers
+                WHERE category = 'scripture' AND created_at >= NOW() - INTERVAL '7 days'
+                GROUP BY subcategory
+                ORDER BY count DESC
+                LIMIT 3
+            `),
             pool.query('SELECT COUNT(*) FROM installs'),
             pool.query("SELECT COUNT(*) FROM installs WHERE created_at > NOW() - INTERVAL '7 days'"),
             pool.query('SELECT COUNT(*) FROM installs WHERE DATE(created_at) = CURRENT_DATE')
         ]);
 
         res.json({
-            totalPrayers: parseInt(totalResult.rows[0].count),
-            todayPrayers: parseInt(todayResult.rows[0].count),
-            premiumToday: parseInt(premiumTodayResult.rows[0].count),
-            trendingMoods: moodResult.rows.map(r => r.subcategory),
-            trendingFocus: focusResult.rows.map(r => r.subcategory),
-            trendingOthers: parseInt(othersResult.rows[0].count),
-            totalInstalls: parseInt(totalInstallsResult.rows[0].count),
-            weeklyInstalls: parseInt(weeklyInstallsResult.rows[0].count),
-            todayInstalls: parseInt(todayInstallsResult.rows[0].count)
+            totalPrayers:       parseInt(totalResult.rows[0].count),
+            todayPrayers:       parseInt(todayResult.rows[0].count),
+            premiumToday:       parseInt(premiumTodayResult.rows[0].count),
+            trendingMoods:      moodResult.rows.map(r => r.subcategory),
+            trendingFocus:      focusResult.rows.map(r => r.subcategory),
+            trendingOthers:     othersResult.rows.map(r => r.subcategory),
+            trendingMilestones: milestoneResult.rows.map(r => r.subcategory),
+            trendingGuided:     guidedResult.rows.map(r => r.subcategory),
+            trendingScripture:  scriptureResult.rows.map(r => r.subcategory),
+            totalInstalls:      parseInt(totalInstallsResult.rows[0].count),
+            weeklyInstalls:     parseInt(weeklyInstallsResult.rows[0].count),
+            todayInstalls:      parseInt(todayInstallsResult.rows[0].count)
         });
     } catch (err) {
         console.error('/stats error:', err);
