@@ -13,6 +13,79 @@ const PORT = process.env.PORT || 3000;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+async function refreshWorldEventsWithClaude() {
+    console.log('🌍 Refreshing world events with Claude...');
+
+    const prompt = `Generate 5 global prayer topics for Christians this week.
+Include a mix of ongoing humanitarian crises, current world events, and persistent spiritual needs.
+Each topic should feel relevant, specific, and prayer-worthy for a Christian community.
+Always include at least one topic about persecuted Christians or religious freedom.
+
+Return ONLY a valid JSON array with exactly 5 objects, each with:
+- title: short compelling title (max 60 chars)
+- description: 1-2 sentence prayer prompt (max 150 chars)
+- category: one of "world", "country", or "community"
+
+Example format:
+[{"title":"...","description":"...","category":"world"}]
+
+No markdown, no backticks, just the JSON array.`;
+
+    const body = JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+    });
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+        },
+        body
+    });
+
+    const data = await response.json();
+    const text = data.content[0].text.trim();
+    const events = JSON.parse(text);
+
+    if (!Array.isArray(events) || events.length !== 5) {
+        throw new Error('Invalid events array from Claude');
+    }
+
+    await pool.query('UPDATE world_events SET active = false');
+    for (const event of events) {
+        await pool.query(
+            'INSERT INTO world_events (title, description, category, active) VALUES ($1, $2, $3, true)',
+            [event.title, event.description || '', event.category || 'world']
+        );
+    }
+
+    console.log('✅ World events refreshed:', events.map(e => e.title));
+    return events;
+}
+
+// Weekly world events refresh — every Monday at 6am UTC
+function scheduleWeeklyRefresh() {
+    const now = new Date();
+    const nextMonday = new Date();
+    nextMonday.setUTCDate(now.getUTCDate() + ((1 + 7 - now.getUTCDay()) % 7 || 7));
+    nextMonday.setUTCHours(6, 0, 0, 0);
+
+    const msUntilMonday = nextMonday.getTime() - now.getTime();
+
+    console.log(`🕐 Next world events refresh scheduled for ${nextMonday.toISOString()}`);
+
+    setTimeout(() => {
+        refreshWorldEventsWithClaude().catch(console.error);
+        setInterval(() => {
+            refreshWorldEventsWithClaude().catch(console.error);
+        }, 7 * 24 * 60 * 60 * 1000);
+    }, msUntilMonday);
+}
+
 async function initDB() {
     await pool.query(`
         CREATE TABLE IF NOT EXISTS prayers (
@@ -411,7 +484,22 @@ app.get('/stats', async (req, res) => {
     }
 });
 
+app.post('/admin/refresh-world-events', async (req, res) => {
+    const adminKey = req.headers['x-admin-key'];
+    if (adminKey !== 'snappray-admin') {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    try {
+        const events = await refreshWorldEventsWithClaude();
+        res.json({ success: true, events });
+    } catch(err) {
+        console.error('Refresh error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 initDB().then(() => {
+    scheduleWeeklyRefresh();
     app.listen(PORT, () => {
         console.log(`SnapPray proxy running on port ${PORT}`);
     });
