@@ -17,17 +17,33 @@ async function refreshWorldEventsWithClaude() {
     console.log('🌍 Refreshing world events with Claude...');
 
     const prompt = `Generate 5 global prayer topics for Christians this week.
-Include a mix of ongoing humanitarian crises, current world events, and persistent spiritual needs.
-Each topic should feel relevant, specific, and prayer-worthy for a Christian community.
-Always include at least one topic about persecuted Christians or religious freedom.
 
-Return ONLY a valid JSON array with exactly 5 objects, each with:
-- title: short compelling title (max 60 chars)
-- description: 1-2 sentence prayer prompt (max 150 chars)
+POLITICAL NEUTRALITY — ABSOLUTE:
+Never frame any topic around political ideology, partisan viewpoints, or political outcomes. Never reference specific politicians by name or political parties. Frame every topic purely as a human need that Christians can bring before God — suffering, injustice, crisis, persecution, need.
+
+TOPIC GUIDELINES:
+- Humanitarian crises and human suffering
+- Persecuted Christians and religious freedom around the world
+- Natural disasters and communities in need
+- Ongoing conflicts and the people caught in them — never the politics, always the people
+- Persistent spiritual needs of communities globally
+
+FRAMING RULE:
+Every title and description must be written from a compassionate Christian perspective focused on human need — not as a news headline or political commentary. Ask: "What would Christians pray about regarding this?" not "What is happening politically?"
+
+DESCRIPTION RULE:
+The description is factual context — who is affected, what is happening, where it is occurring. 2-3 sentences maximum. No prayer language in the description — that comes from the prayer AI. Write it as compassionate, neutral, factual context that helps someone understand what they are praying about.
+
+EXAMPLES OF CORRECT FRAMING:
+- Title: "Families Displaced by Conflict in Sudan" — not "Sudan civil war politics"
+- Description: "Millions of civilians in Sudan have been displaced by ongoing conflict, with limited access to food, water, and medical care. Families are separated and communities destroyed."
+- Title: "Christians Facing Persecution in North Korea" — factual, no political commentary
+- Title: "Communities Rebuilding After Earthquake in Turkey" — human need, not politics
+
+Return ONLY a valid JSON array with exactly 5 objects:
+- title: short compelling title (max 60 chars) — human need focused, never political
+- description: 2-3 sentences of factual compassionate context (max 300 chars) — who, what, where. No prayer language.
 - category: one of "world", "country", or "community"
-
-Example format:
-[{"title":"...","description":"...","category":"world"}]
 
 No markdown, no backticks, just the JSON array.`;
 
