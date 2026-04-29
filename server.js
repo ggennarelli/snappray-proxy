@@ -79,27 +79,31 @@ No markdown, no backticks, just the JSON array.`;
         );
     }
 
+    await pool.query(`
+        INSERT INTO app_config (key, value, updated_at)
+        VALUES ('world_events_last_refresh', NOW()::text, NOW())
+        ON CONFLICT (key) DO UPDATE SET value = NOW()::text, updated_at = NOW()
+    `);
+
     console.log('✅ World events refreshed:', events.map(e => e.title));
     return events;
 }
 
-// Weekly world events refresh — every Monday at 6am UTC
-function scheduleWeeklyRefresh() {
-    const now = new Date();
-    const nextMonday = new Date();
-    nextMonday.setUTCDate(now.getUTCDate() + ((1 + 7 - now.getUTCDay()) % 7 || 7));
-    nextMonday.setUTCHours(6, 0, 0, 0);
+// DB-based world events refresh — survives container restarts
+async function checkAndRefreshWorldEvents() {
+    const result = await pool.query(
+        "SELECT value FROM app_config WHERE key = 'world_events_last_refresh'"
+    );
+    const lastRefresh = result.rows[0] ? new Date(result.rows[0].value) : null;
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const msUntilMonday = nextMonday.getTime() - now.getTime();
-
-    console.log(`🕐 Next world events refresh scheduled for ${nextMonday.toISOString()}`);
-
-    setTimeout(() => {
-        refreshWorldEventsWithClaude().catch(console.error);
-        setInterval(() => {
-            refreshWorldEventsWithClaude().catch(console.error);
-        }, 7 * 24 * 60 * 60 * 1000);
-    }, msUntilMonday);
+    if (!lastRefresh || lastRefresh < sevenDaysAgo) {
+        console.log('🌍 World events stale, refreshing...');
+        await refreshWorldEventsWithClaude();
+    } else {
+        const daysLeft = Math.ceil((lastRefresh.getTime() + 7 * 24 * 60 * 60 * 1000 - Date.now()) / (24 * 60 * 60 * 1000));
+        console.log(`🌍 World events fresh (last refresh: ${lastRefresh.toISOString()}), next in ~${daysLeft} days`);
+    }
 }
 
 async function initDB() {
@@ -144,6 +148,14 @@ async function initDB() {
             platform VARCHAR(20) DEFAULT 'ios',
             created_at TIMESTAMP DEFAULT NOW()
         );
+        CREATE TABLE IF NOT EXISTS app_config (
+            key VARCHAR(100) PRIMARY KEY,
+            value TEXT,
+            updated_at TIMESTAMP DEFAULT NOW()
+        );
+        INSERT INTO app_config (key, value)
+        VALUES ('world_events_last_refresh', NOW()::text)
+        ON CONFLICT (key) DO NOTHING;
     `);
     console.log('DB tables ready');
 }
@@ -514,8 +526,12 @@ app.post('/admin/refresh-world-events', async (req, res) => {
     }
 });
 
-initDB().then(() => {
-    scheduleWeeklyRefresh();
+initDB().then(async () => {
+    await checkAndRefreshWorldEvents().catch(console.error);
+    // Check daily in case container stays up longer than a week
+    setInterval(() => {
+        checkAndRefreshWorldEvents().catch(console.error);
+    }, 24 * 60 * 60 * 1000);
     app.listen(PORT, () => {
         console.log(`SnapPray proxy running on port ${PORT}`);
     });
