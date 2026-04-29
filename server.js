@@ -40,12 +40,10 @@ EXAMPLES OF CORRECT FRAMING:
 - Title: "Christians Facing Persecution in North Korea" — factual, no political commentary
 - Title: "Communities Rebuilding After Earthquake in Turkey" — human need, not politics
 
-Return ONLY a valid JSON array with exactly 5 objects:
+Return ONLY a raw JSON array with exactly 5 objects. No markdown, no code fences, no backticks, no preamble, no explanation. Just the raw JSON array starting with [ and ending with ].
 - title: short compelling title (max 60 chars) — human need focused, never political
 - description: 2-3 sentences of factual compassionate context (max 300 chars) — who, what, where. No prayer language.
-- category: one of "world", "country", or "community"
-
-No markdown, no backticks, just the JSON array.`;
+- category: one of "world", "country", or "community"`;
 
     const body = JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
@@ -65,11 +63,9 @@ No markdown, no backticks, just the JSON array.`;
 
     const data = await response.json();
     const rawText = data.content[0].text.trim();
-    const cleaned = rawText
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```\s*$/i, '')
-        .trim();
+    // Strip markdown code fences — Haiku sometimes wraps JSON in ```json ... ```
+    const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+    console.log('🔍 Haiku raw response (first 200 chars):', rawText.substring(0, 200));
     const events = JSON.parse(cleaned);
 
     if (!Array.isArray(events) || events.length !== 5) {
