@@ -64,8 +64,13 @@ No markdown, no backticks, just the JSON array.`;
     });
 
     const data = await response.json();
-    const text = data.content[0].text.trim();
-    const events = JSON.parse(text);
+    const rawText = data.content[0].text.trim();
+    const cleaned = rawText
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+    const events = JSON.parse(cleaned);
 
     if (!Array.isArray(events) || events.length !== 5) {
         throw new Error('Invalid events array from Claude');
