@@ -436,7 +436,7 @@ app.get('/stats', async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
 
-        const [totalResult, todayResult, premiumTodayResult, moodResult, focusResult, othersResult, milestoneResult, guidedResult, scriptureResult, totalInstallsResult, weeklyInstallsResult, todayInstallsResult] = await Promise.all([
+        const [totalResult, todayResult, premiumTodayResult, moodResult, focusResult, othersResult, milestoneResult, guidedResult, scriptureResult, totalInstallsResult, weeklyInstallsResult, todayInstallsResult, lastRefreshResult] = await Promise.all([
             pool.query('SELECT COUNT(*) FROM prayers'),
             pool.query("SELECT COUNT(*) FROM prayers WHERE created_at::date = $1", [today]),
             pool.query("SELECT COUNT(*) FROM premium_joins WHERE created_at::date = $1", [today]),
@@ -490,7 +490,8 @@ app.get('/stats', async (req, res) => {
             `),
             pool.query('SELECT COUNT(*) FROM installs'),
             pool.query("SELECT COUNT(*) FROM installs WHERE created_at > NOW() - INTERVAL '7 days'"),
-            pool.query('SELECT COUNT(*) FROM installs WHERE DATE(created_at) = CURRENT_DATE')
+            pool.query('SELECT COUNT(*) FROM installs WHERE DATE(created_at) = CURRENT_DATE'),
+            pool.query("SELECT value FROM app_config WHERE key = 'world_events_last_refresh'")
         ]);
 
         res.json({
@@ -505,7 +506,8 @@ app.get('/stats', async (req, res) => {
             trendingScripture:  scriptureResult.rows.map(r => r.subcategory),
             totalInstalls:      parseInt(totalInstallsResult.rows[0].count),
             weeklyInstalls:     parseInt(weeklyInstallsResult.rows[0].count),
-            todayInstalls:      parseInt(todayInstallsResult.rows[0].count)
+            todayInstalls:      parseInt(todayInstallsResult.rows[0].count),
+            worldEventsLastRefresh: lastRefreshResult.rows[0]?.value || null
         });
     } catch (err) {
         console.error('/stats error:', err);
