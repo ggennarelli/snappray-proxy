@@ -13,6 +13,16 @@ const PORT = process.env.PORT || 3000;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+function extractJsonArray(rawText) {
+    let cleaned = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '');
+    const firstBracket = cleaned.indexOf('[');
+    const lastBracket = cleaned.lastIndexOf(']');
+    if (firstBracket === -1 || lastBracket === -1 || lastBracket < firstBracket) {
+        throw new Error('No valid JSON array found in response: ' + cleaned.substring(0, 200));
+    }
+    return JSON.parse(cleaned.substring(firstBracket, lastBracket + 1));
+}
+
 async function refreshWorldEventsWithClaude() {
     console.log('🌍 Refreshing world events with Claude Sonnet + web search...');
 
@@ -81,6 +91,9 @@ If you cannot find 5 events meeting the 90-day freshness criteria, return 3 or 4
 BEFORE RETURNING YOUR FINAL ANSWER:
 For each event, ask yourself: "What specific news event from the past 90 days am I citing?" If you cannot name a specific recent news anchor for that event, REMOVE it from your response. Better to return 3 confirmed-current events than 5 with stale content.
 
+CRITICAL OUTPUT REQUIREMENT:
+Return ONLY a valid JSON array. No introduction. No commentary. No "Here are the results" or "Good results" or any preamble whatsoever. Your response must start with [ and end with ]. Nothing before, nothing after. No markdown code fences.
+
 Begin search now.`;
 
     const body = JSON.stringify({
@@ -117,9 +130,8 @@ Begin search now.`;
         throw new Error('No text block in Sonnet response. Content types: ' + data.content.map(b => b.type).join(', '));
     }
     const rawText = textBlock.text.trim();
-    const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
     console.log('🔍 Sonnet raw text (first 300 chars):', rawText.substring(0, 300));
-    const events = JSON.parse(cleaned);
+    const events = extractJsonArray(rawText);
 
     if (!Array.isArray(events) || events.length < 3 || events.length > 5) {
         throw new Error(`Invalid events array from Claude: got ${events.length} items`);
