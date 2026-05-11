@@ -14,40 +14,79 @@ const PORT = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function refreshWorldEventsWithClaude() {
-    console.log('🌍 Refreshing world events with Claude...');
+    console.log('🌍 Refreshing world events with Claude Sonnet + web search...');
 
-    const prompt = `Generate 5 global prayer topics for Christians this week.
+    const today = new Date().toISOString().split('T')[0];
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const prompt = `You are curating a weekly "Pray for the World" feed for SnapPray, a Christian prayer app. Use the web_search tool to find 5 current ongoing situations in the world that Christians should be praying about. Today's date is ${today}.
+
+SCOPE:
+Focus on suffering, persecution, and crisis that Christians worldwide should bring before God:
+- Christian persecution (imprisonment, church attacks, hostile regime actions against believers)
+- Humanitarian crises (famine, displacement, refugee suffering)
+- Natural disasters with significant human impact
+- Ongoing armed conflicts affecting civilians and the church
+- Disease outbreaks and health emergencies
 
 POLITICAL NEUTRALITY — ABSOLUTE:
-Never frame any topic around political ideology, partisan viewpoints, or political outcomes. Never reference specific politicians by name or political parties. Frame every topic purely as a human need that Christians can bring before God — suffering, injustice, crisis, persecution, need.
+- Do NOT include elections, political campaigns, or partisan political news
+- Do NOT include legislation, court rulings, or policy debates
+- Do NOT include political commentary or analysis
+- Frame events through a humanitarian and spiritual lens, never political
+- When a situation has political dimensions, focus on the human suffering, NOT the politics
 
-TOPIC GUIDELINES:
-- Humanitarian crises and human suffering
-- Persecuted Christians and religious freedom around the world
-- Natural disasters and communities in need
-- Ongoing conflicts and the people caught in them — never the politics, always the people
-- Persistent spiritual needs of communities globally
+PREFERRED SOURCES (search these first):
+- Open Doors USA (opendoorsusa.org) — persecution reporting
+- Voice of the Martyrs (persecution.com) — persecuted church
+- International Christian Concern (persecution.org) — country reports
+- Samaritan's Purse (samaritanspurse.org) — disaster relief
+- World Vision (worldvision.org) — humanitarian crises
+- Mission Network News (mnnonline.org) — mission and persecution
+Fallback: ReliefWeb (reliefweb.int), ICRC (icrc.org)
+Avoid politically-charged outlets entirely.
+
+FRESHNESS — STRICT RULE:
+Today's date is ${today}. Only include events where the news, developments, or escalations you cite occurred within the past 90 days (since ${ninetyDaysAgo}).
+
+For ongoing situations (long-running conflicts, persecution, displacement), it is acceptable IF AND ONLY IF there has been a meaningful development, news event, or update within the past 90 days that you can confirm via web search. Do NOT include long-running situations based solely on the situation being ongoing — there must be a recent news anchor.
+
+REJECT IF:
+- The event occurred more than 90 days ago and you have no recent news anchor
+- You cannot confirm via web search that the situation has had developments in the past 90 days
+- The description references casualties, displacement numbers, or specifics from events older than 90 days as if they were current
+
+EXAMPLES OF WHAT TO REJECT:
+- The September 2023 Morocco earthquake (older than 90 days, no recent recovery news)
+- The 2022 Pakistan floods (too old)
+- Generic "persecution in restricted nations" with no specific recent event
+
+EXAMPLES OF WHAT TO INCLUDE:
+- A persecution incident reported by Open Doors or VOM in the past 90 days
+- A natural disaster that occurred or had major aftermath in the past 90 days
+- An escalation in an ongoing conflict that occurred in the past 90 days
+- A famine or hunger crisis declaration made in the past 90 days
 
 FRAMING RULE:
-Every title and description must be written from a compassionate Christian perspective focused on human need — not as a news headline or political commentary. Ask: "What would Christians pray about regarding this?" not "What is happening politically?"
+Every title and description must be written from a compassionate Christian perspective focused on human need. Ask: "What would Christians pray about?" not "What is happening politically?"
 
-DESCRIPTION RULE:
-The description is factual context — who is affected, what is happening, where it is occurring. 2-3 sentences maximum. No prayer language in the description — that comes from the prayer AI. Write it as compassionate, neutral, factual context that helps someone understand what they are praying about.
-
-EXAMPLES OF CORRECT FRAMING:
-- Title: "Families Displaced by Conflict in Sudan" — not "Sudan civil war politics"
-- Description: "Millions of civilians in Sudan have been displaced by ongoing conflict, with limited access to food, water, and medical care. Families are separated and communities destroyed."
-- Title: "Christians Facing Persecution in North Korea" — factual, no political commentary
-- Title: "Communities Rebuilding After Earthquake in Turkey" — human need, not politics
-
-Return ONLY a raw JSON array with exactly 5 objects. No markdown, no code fences, no backticks, no preamble, no explanation. Just the raw JSON array starting with [ and ending with ].
+OUTPUT FORMAT:
+Return ONLY a raw JSON array. No markdown, no code fences, no backticks, no preamble. Just the raw JSON array starting with [ and ending with ].
 - title: short compelling title (max 60 chars) — human need focused, never political
-- description: 2-3 sentences of factual compassionate context (max 300 chars) — who, what, where. No prayer language.
-- category: one of "world", "country", or "community"`;
+- description: 2-3 sentences of factual compassionate context (max 300 chars). No prayer language.
+- category: one of "world", "country", or "community"
+
+If you cannot find 5 events meeting the 90-day freshness criteria, return 3 or 4. Quality and freshness over quantity.
+
+BEFORE RETURNING YOUR FINAL ANSWER:
+For each event, ask yourself: "What specific news event from the past 90 days am I citing?" If you cannot name a specific recent news anchor for that event, REMOVE it from your response. Better to return 3 confirmed-current events than 5 with stale content.
+
+Begin search now.`;
 
     const body = JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1000,
+        model: 'claude-sonnet-4-6-20250514',
+        max_tokens: 4096,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         messages: [{ role: 'user', content: prompt }]
     });
 
@@ -56,20 +95,34 @@ Return ONLY a raw JSON array with exactly 5 objects. No markdown, no code fences
         headers: {
             'Content-Type': 'application/json',
             'x-api-key': process.env.ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01'
+            'anthropic-version': '2025-03-05'
         },
         body
     });
 
     const data = await response.json();
-    const rawText = data.content[0].text.trim();
-    // Strip markdown code fences — Haiku sometimes wraps JSON in ```json ... ```
+    console.log('🔍 ANTHROPIC RESPONSE STATUS:', data.type, data.stop_reason || '');
+
+    // Handle API errors gracefully
+    if (data.type === 'error') {
+        throw new Error(`Anthropic API error: ${data.error?.type} — ${data.error?.message}`);
+    }
+    if (!data.content) {
+        throw new Error(`Unexpected response shape: ${JSON.stringify(data).substring(0, 500)}`);
+    }
+
+    // Sonnet with tools returns multiple content blocks — find the text block with JSON
+    const textBlock = data.content.find(b => b.type === 'text');
+    if (!textBlock) {
+        throw new Error('No text block in Sonnet response. Content types: ' + data.content.map(b => b.type).join(', '));
+    }
+    const rawText = textBlock.text.trim();
     const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-    console.log('🔍 Haiku raw response (first 200 chars):', rawText.substring(0, 200));
+    console.log('🔍 Sonnet raw text (first 300 chars):', rawText.substring(0, 300));
     const events = JSON.parse(cleaned);
 
-    if (!Array.isArray(events) || events.length !== 5) {
-        throw new Error('Invalid events array from Claude');
+    if (!Array.isArray(events) || events.length < 3 || events.length > 5) {
+        throw new Error(`Invalid events array from Claude: got ${events.length} items`);
     }
 
     await pool.query('UPDATE world_events SET active = false');
