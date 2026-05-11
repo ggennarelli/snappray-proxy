@@ -84,7 +84,7 @@ For each event, ask yourself: "What specific news event from the past 90 days am
 Begin search now.`;
 
     const body = JSON.stringify({
-        model: 'claude-sonnet-4-6-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         messages: [{ role: 'user', content: prompt }]
