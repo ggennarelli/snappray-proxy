@@ -14,60 +14,40 @@ const PORT = process.env.PORT || 3000;
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 async function refreshWorldEventsWithClaude() {
-    console.log('🌍 Refreshing world events with Claude Sonnet + web search...');
+    console.log('🌍 Refreshing world events with Claude...');
 
-    const today = new Date().toISOString().split('T')[0];
+    const prompt = `Generate 5 global prayer topics for Christians this week.
 
-    const prompt = `You are curating a weekly "Pray for the World" feed for SnapPray, a Christian prayer app. Use the web_search tool to find 5 current ongoing situations in the world that Christians should be praying about. Today's date is ${today}.
+POLITICAL NEUTRALITY — ABSOLUTE:
+Never frame any topic around political ideology, partisan viewpoints, or political outcomes. Never reference specific politicians by name or political parties. Frame every topic purely as a human need that Christians can bring before God — suffering, injustice, crisis, persecution, need.
 
-SCOPE:
-Focus on suffering, persecution, and crisis that Christians worldwide should bring before God. Examples of appropriate topics:
-- Christian persecution (imprisonment, church attacks, hostile regime actions against believers)
-- Humanitarian crises (famine, displacement, refugee suffering)
-- Natural disasters with significant human impact (earthquakes, floods, storms)
-- Ongoing armed conflicts affecting civilians and the church
-- Disease outbreaks and health emergencies
-- Specific countries or regions experiencing prolonged suffering
+TOPIC GUIDELINES:
+- Humanitarian crises and human suffering
+- Persecuted Christians and religious freedom around the world
+- Natural disasters and communities in need
+- Ongoing conflicts and the people caught in them — never the politics, always the people
+- Persistent spiritual needs of communities globally
 
-EXPLICIT NON-POLITICAL CONSTRAINTS:
-- Do NOT include elections, political campaigns, or partisan political news
-- Do NOT include legislation, court rulings, or policy debates
-- Do NOT include political commentary or analysis
-- Avoid framing events through a political lens — frame them through a humanitarian and spiritual lens
-- When a situation has political dimensions (e.g., a regime's treatment of Christians), focus on the human suffering and prayer need, NOT on the politics
+FRAMING RULE:
+Every title and description must be written from a compassionate Christian perspective focused on human need — not as a news headline or political commentary. Ask: "What would Christians pray about regarding this?" not "What is happening politically?"
 
-PREFERRED SOURCES (search these first):
-Christian-framed sources:
-- Open Doors USA (opendoorsusa.org) — persecution reporting
-- Voice of the Martyrs (persecution.com) — persecuted church
-- International Christian Concern (persecution.org) — country reports
-- Samaritan's Purse (samaritanspurse.org) — disaster relief
-- World Vision (worldvision.org) — humanitarian crises
-- Mission Network News (mnnonline.org) — mission and persecution
+DESCRIPTION RULE:
+The description is factual context — who is affected, what is happening, where it is occurring. 2-3 sentences maximum. No prayer language in the description — that comes from the prayer AI. Write it as compassionate, neutral, factual context that helps someone understand what they are praying about.
 
-Fallback humanitarian sources (factual, non-political):
-- ReliefWeb (reliefweb.int) — UN-affiliated disaster reporting
-- International Committee of the Red Cross (icrc.org)
+EXAMPLES OF CORRECT FRAMING:
+- Title: "Families Displaced by Conflict in Sudan" — not "Sudan civil war politics"
+- Description: "Millions of civilians in Sudan have been displaced by ongoing conflict, with limited access to food, water, and medical care. Families are separated and communities destroyed."
+- Title: "Christians Facing Persecution in North Korea" — factual, no political commentary
+- Title: "Communities Rebuilding After Earthquake in Turkey" — human need, not politics
 
-Avoid politically-charged outlets entirely — mainstream political news, opinion pieces, advocacy journalism.
-
-FRESHNESS:
-Prioritize situations that have meaningful developments within the past 30 days. Ongoing long-running crises are appropriate when there are recent developments worth noting. If a situation hasn't had meaningful news in 60+ days, deprioritize it.
-
-OUTPUT FORMAT:
 Return ONLY a raw JSON array with exactly 5 objects. No markdown, no code fences, no backticks, no preamble, no explanation. Just the raw JSON array starting with [ and ending with ].
 - title: short compelling title (max 60 chars) — human need focused, never political
-- description: concise factual summary, MAXIMUM 40 WORDS. Every word must deliver meaning — no filler, no generic background. End on what people are suffering or need. Must read as a complete thought, never truncated mid-sentence. No prayer language.
-- category: one of "world", "country", or "community"
-
-BEFORE RETURNING: Count the words in each description. If any exceeds 40 words, rewrite it shorter. A truncated sentence is worse than a shorter one.
-
-Begin search now.`;
+- description: 2-3 sentences of factual compassionate context (max 300 chars) — who, what, where. No prayer language.
+- category: one of "world", "country", or "community"`;
 
     const body = JSON.stringify({
-        model: 'claude-sonnet-4-6-20250514',
-        max_tokens: 4096,
-        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }]
     });
 
@@ -76,22 +56,20 @@ Begin search now.`;
         headers: {
             'Content-Type': 'application/json',
             'x-api-key': process.env.ANTHROPIC_API_KEY,
-            'anthropic-version': '2025-03-05'
+            'anthropic-version': '2023-06-01'
         },
         body
     });
 
     const data = await response.json();
-    // Sonnet with tools returns multiple content blocks — find the text block with JSON
-    const textBlock = data.content.find(b => b.type === 'text');
-    if (!textBlock) throw new Error('No text block in Sonnet response');
-    const rawText = textBlock.text.trim();
+    const rawText = data.content[0].text.trim();
+    // Strip markdown code fences — Haiku sometimes wraps JSON in ```json ... ```
     const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-    console.log('🔍 Sonnet raw response (first 200 chars):', rawText.substring(0, 200));
+    console.log('🔍 Haiku raw response (first 200 chars):', rawText.substring(0, 200));
     const events = JSON.parse(cleaned);
 
-    if (!Array.isArray(events) || events.length < 3 || events.length > 5) {
-        throw new Error(`Invalid events array from Claude: got ${events.length} items`);
+    if (!Array.isArray(events) || events.length !== 5) {
+        throw new Error('Invalid events array from Claude');
     }
 
     await pool.query('UPDATE world_events SET active = false');
@@ -189,46 +167,22 @@ async function callAnthropic(body) {
         'x-api-key': ANTHROPIC_KEY,
         'anthropic-version': '2023-06-01'
     };
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000);
-    try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+    });
+    if (response.status === 529 || response.status === 503) {
+        console.log('Anthropic overloaded, retrying in 10s...');
+        await new Promise(r => setTimeout(r, 10000));
+        const retry = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
             headers,
-            body: JSON.stringify(body),
-            signal: controller.signal
+            body: JSON.stringify(body)
         });
-        clearTimeout(timeout);
-        if (response.status === 529 || response.status === 503) {
-            console.log('Anthropic overloaded, retrying in 10s...');
-            await new Promise(r => setTimeout(r, 10000));
-            const retryController = new AbortController();
-            const retryTimeout = setTimeout(() => retryController.abort(), 60000);
-            try {
-                const retry = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(body),
-                    signal: retryController.signal
-                });
-                clearTimeout(retryTimeout);
-                return retry;
-            } catch (err) {
-                clearTimeout(retryTimeout);
-                if (err.name === 'AbortError') {
-                    throw new Error('Anthropic API timeout after 60s (retry)');
-                }
-                throw err;
-            }
-        }
-        return response;
-    } catch (err) {
-        clearTimeout(timeout);
-        if (err.name === 'AbortError') {
-            throw new Error('Anthropic API timeout after 60s');
-        }
-        throw err;
+        return retry;
     }
+    return response;
 }
 
 app.get('/', (req, res) => {
