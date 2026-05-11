@@ -95,7 +95,7 @@ Begin search now.`;
         headers: {
             'Content-Type': 'application/json',
             'x-api-key': process.env.ANTHROPIC_API_KEY,
-            'anthropic-version': '2025-03-05'
+            'anthropic-version': '2023-06-01'
         },
         body
     });
