@@ -516,8 +516,12 @@ app.get('/stats', async (req, res) => {
 });
 
 app.post('/admin/refresh-world-events', async (req, res) => {
-    const adminKey = req.headers['x-admin-key'];
-    if (adminKey !== 'snappray-admin') {
+    const expectedKey = process.env.ADMIN_KEY;
+    if (!expectedKey) {
+        console.error('ADMIN_KEY env var not set');
+        return res.status(500).json({ error: 'Server misconfigured' });
+    }
+    if (req.headers['x-admin-key'] !== expectedKey) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     try {
