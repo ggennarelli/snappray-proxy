@@ -127,13 +127,16 @@ Begin search now.`;
         throw new Error(`Unexpected response shape: ${JSON.stringify(data).substring(0, 500)}`);
     }
 
-    // Sonnet with tools returns multiple content blocks — find the text block with JSON
-    const textBlock = data.content.find(b => b.type === 'text');
-    if (!textBlock) {
+    // Sonnet with tools returns multiple content blocks — earlier text blocks
+    // contain reasoning/narration, the final text block has the JSON answer.
+    // Collect ALL text blocks and concatenate, then extract the JSON array.
+    const textBlocks = data.content.filter(b => b.type === 'text');
+    if (textBlocks.length === 0) {
         throw new Error('No text block in Sonnet response. Content types: ' + data.content.map(b => b.type).join(', '));
     }
-    const rawText = textBlock.text.trim();
-    console.log('🔍 Sonnet raw text (first 300 chars):', rawText.substring(0, 300));
+    const rawText = textBlocks.map(b => b.text).join('\n').trim();
+    console.log('🔍 Sonnet text blocks:', textBlocks.length, '— combined length:', rawText.length);
+    console.log('🔍 Sonnet raw text (last 300 chars):', rawText.substring(rawText.length - 300));
     const events = extractJsonArray(rawText);
 
     if (!Array.isArray(events) || events.length < 3 || events.length > 5) {
