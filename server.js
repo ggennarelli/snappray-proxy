@@ -86,6 +86,9 @@ Return ONLY a raw JSON array. No markdown, no code fences, no backticks, no prea
 - description: 2-3 sentences of factual compassionate context (max 300 chars). No prayer language.
 - category: one of "world", "country", or "community"
 
+DIVERSITY — CRITICAL:
+The events must be distinct from one another in both location and nature. Never include two events about the same country or the same crisis. Spread coverage across different regions of the world. Vary the topic mix — do not return two persecution stories, two hunger stories, or two conflict stories. Each event should stand on its own as a separate situation Christians can pray about.
+
 If you cannot find 5 events meeting the 90-day freshness criteria, return 3 or 4. Quality and freshness over quantity.
 
 BEFORE RETURNING YOUR FINAL ANSWER:
