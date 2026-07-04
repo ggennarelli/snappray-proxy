@@ -26,8 +26,28 @@ function extractJsonArray(rawText) {
 async function refreshWorldEventsWithClaude() {
     console.log('🌍 Refreshing world events with Claude Sonnet + web search...');
 
+    // Query past 28 days of inactive events for deduplication
+    const pastEventsResult = await pool.query(`
+        SELECT title, description, category
+        FROM world_events
+        WHERE active = false
+        AND created_at >= NOW() - INTERVAL '28 days'
+        ORDER BY created_at DESC
+    `);
+    const pastTopics = pastEventsResult.rows.map(e =>
+        `- ${e.title} (${e.category})`
+    ).join('\n');
+
+    // Query last refresh date for dynamic freshness window
+    const configResult = await pool.query(
+        "SELECT value FROM app_config WHERE key = 'world_events_last_refresh'"
+    );
+    const lastRefresh = configResult.rows[0]?.value;
     const today = new Date().toISOString().split('T')[0];
     const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const freshSince = lastRefresh
+        ? new Date(lastRefresh).toISOString().split('T')[0]
+        : ninetyDaysAgo;
 
     const prompt = `You are curating a weekly "Pray for the World" feed for SnapPray, a Christian prayer app. Use the web_search tool to find 5 current ongoing situations in the world that Christians should be praying about. Today's date is ${today}.
 
@@ -57,14 +77,14 @@ Fallback: ReliefWeb (reliefweb.int), ICRC (icrc.org)
 Avoid politically-charged outlets entirely.
 
 FRESHNESS — STRICT RULE:
-Today's date is ${today}. Only include events where the news, developments, or escalations you cite occurred within the past 90 days (since ${ninetyDaysAgo}).
+Today's date is ${today}. Only include events where the news, developments, or escalations you cite occurred after ${freshSince}. This ensures each weekly batch covers genuinely new developments, not recycled stories from previous weeks.
 
-For ongoing situations (long-running conflicts, persecution, displacement), it is acceptable IF AND ONLY IF there has been a meaningful development, news event, or update within the past 90 days that you can confirm via web search. Do NOT include long-running situations based solely on the situation being ongoing — there must be a recent news anchor.
+For ongoing situations (long-running conflicts, persecution, displacement), it is acceptable IF AND ONLY IF there has been a meaningful development, news event, or update after ${freshSince} that you can confirm via web search. Do NOT include long-running situations based solely on the situation being ongoing — there must be a recent news anchor.
 
 REJECT IF:
-- The event occurred more than 90 days ago and you have no recent news anchor
-- You cannot confirm via web search that the situation has had developments in the past 90 days
-- The description references casualties, displacement numbers, or specifics from events older than 90 days as if they were current
+- The event occurred before ${freshSince} and you have no recent news anchor
+- You cannot confirm via web search that the situation has had developments after ${freshSince}
+- The description references casualties, displacement numbers, or specifics from events before ${freshSince} as if they were current
 
 EXAMPLES OF WHAT TO REJECT:
 - The September 2023 Morocco earthquake (older than 90 days, no recent recovery news)
@@ -72,10 +92,10 @@ EXAMPLES OF WHAT TO REJECT:
 - Generic "persecution in restricted nations" with no specific recent event
 
 EXAMPLES OF WHAT TO INCLUDE:
-- A persecution incident reported by Open Doors or VOM in the past 90 days
-- A natural disaster that occurred or had major aftermath in the past 90 days
-- An escalation in an ongoing conflict that occurred in the past 90 days
-- A famine or hunger crisis declaration made in the past 90 days
+- A persecution incident reported by Open Doors or VOM after ${freshSince}
+- A natural disaster that occurred or had major aftermath after ${freshSince}
+- An escalation in an ongoing conflict that occurred after ${freshSince}
+- A famine or hunger crisis declaration made after ${freshSince}
 
 FRAMING RULE:
 Every title and description must be written from a compassionate Christian perspective focused on human need. Ask: "What would Christians pray about?" not "What is happening politically?"
@@ -86,13 +106,17 @@ Return ONLY a raw JSON array. No markdown, no code fences, no backticks, no prea
 - description: 2-3 sentences of factual compassionate context (max 300 chars). No prayer language.
 - category: one of "world", "country", or "community"
 
+PREVIOUSLY COVERED — DO NOT REPEAT:
+The following topics were covered in the past 28 days. Do not generate any event that overlaps in location, crisis type, or subject matter with these:
+${pastTopics.length > 0 ? pastTopics : '(No recent history — first generation)'}
+
 DIVERSITY — CRITICAL:
 The events must be distinct from one another in both location and nature. Never include two events about the same country or the same crisis. Spread coverage across different regions of the world. Vary the topic mix — do not return two persecution stories, two hunger stories, or two conflict stories. Each event should stand on its own as a separate situation Christians can pray about.
 
-If you cannot find 5 events meeting the 90-day freshness criteria, return 3 or 4. Quality and freshness over quantity.
+If you cannot find 5 events meeting the freshness criteria, return 3 or 4. Quality and freshness over quantity.
 
 BEFORE RETURNING YOUR FINAL ANSWER:
-For each event, ask yourself: "What specific news event from the past 90 days am I citing?" If you cannot name a specific recent news anchor for that event, REMOVE it from your response. Better to return 3 confirmed-current events than 5 with stale content.
+For each event, ask yourself: "What specific news event after ${freshSince} am I citing?" If you cannot name a specific recent news anchor for that event, REMOVE it from your response. Better to return 3 confirmed-current events than 5 with stale content.
 
 CRITICAL OUTPUT REQUIREMENT:
 Return ONLY a valid JSON array. No introduction. No commentary. No "Here are the results" or "Good results" or any preamble whatsoever. Your response must start with [ and end with ]. Nothing before, nothing after. No markdown code fences.
