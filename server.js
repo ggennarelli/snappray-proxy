@@ -49,22 +49,38 @@ async function refreshWorldEventsWithClaude() {
         ? new Date(lastRefresh).toISOString().split('T')[0]
         : ninetyDaysAgo;
 
-    const prompt = `You are curating a weekly "Pray for the World" feed for SnapPray, a Christian prayer app. Use the web_search tool to find 5 current ongoing situations in the world that Christians should be praying about. Today's date is ${today}.
+    const prompt = `You are curating a weekly "Pray for the World" feed for SnapPray, a Christian prayer app. Use the web_search tool to find exactly 5 current situations, moments, and events in the world that Christians should be bringing before God in prayer. You must return exactly 5 — no fewer. Today's date is ${today}.
 
 SCOPE:
-Focus on suffering, persecution, and crisis that Christians worldwide should bring before God:
+Christians pray about everything — suffering and celebration, crisis and gratitude, conflict and peace. Find exactly 5 diverse prayer topics from across this full spectrum:
+
+CRISIS & SUFFERING (always include at least 2):
 - Christian persecution (imprisonment, church attacks, hostile regime actions against believers)
 - Humanitarian crises (famine, displacement, refugee suffering)
 - Natural disasters with significant human impact
 - Ongoing armed conflicts affecting civilians and the church
 - Disease outbreaks and health emergencies
 
-POLITICAL NEUTRALITY — ABSOLUTE:
-- Do NOT include elections, political campaigns, or partisan political news
-- Do NOT include legislation, court rulings, or policy debates
-- Do NOT include political commentary or analysis
-- Frame events through a humanitarian and spiritual lens, never political
-- When a situation has political dimensions, focus on the human suffering, NOT the politics
+WORLD EVENTS & MOMENTS (include 1-2):
+- Geopolitical tensions and conflicts (pray for peace, for civilians, for leaders to seek wisdom — never partisan)
+- National moments worth praying over (celebrations, transitions, significant dates)
+- Global health, environment, or economic situations affecting communities worldwide
+- Significant cultural or humanitarian milestones
+
+GRATITUDE & HOPE (include 1 when available):
+- Positive developments worth giving thanks for — peace agreements, disaster relief breakthroughs, communities rebuilt, persecution that has eased
+- Answered prayers the global church can celebrate together
+
+The mix should reflect how Christians actually pray — not only in tragedy, but in all of life.
+
+PRAYER FRAMING — NOT POLITICAL COMMENTARY:
+- Never take political sides, endorse candidates, parties, or legislation
+- Never editorialize about political outcomes or policy positions
+- DO include geopolitical conflicts, wars, national events, and world leader decisions — framed as prayer topics, not news analysis
+- For any situation with political dimensions: focus on the human need, the call to prayer, and God's sovereignty — not the politics
+- "Pray for Iran" is appropriate. "Iran's government is wrong" is not.
+- "Pray for America on this Independence Day" is appropriate. "America's policies are..." is not.
+- Ask: "What would a pastor ask their congregation to pray about?" That's the framing.
 
 PREFERRED SOURCES (search these first):
 - Open Doors USA (opendoorsusa.org) — persecution reporting
@@ -113,10 +129,10 @@ ${pastTopics.length > 0 ? pastTopics : '(No recent history — first generation)
 DIVERSITY — CRITICAL:
 The events must be distinct from one another in both location and nature. Never include two events about the same country or the same crisis. Spread coverage across different regions of the world. Vary the topic mix — do not return two persecution stories, two hunger stories, or two conflict stories. Each event should stand on its own as a separate situation Christians can pray about.
 
-If you cannot find 5 events meeting the freshness criteria, return 3 or 4. Quality and freshness over quantity.
+You must return exactly 5 events. If freshness criteria are tight, broaden your search across the expanded scope categories above — gratitude, national moments, and world events provide additional angles to reach 5.
 
 BEFORE RETURNING YOUR FINAL ANSWER:
-For each event, ask yourself: "What specific news event after ${freshSince} am I citing?" If you cannot name a specific recent news anchor for that event, REMOVE it from your response. Better to return 3 confirmed-current events than 5 with stale content.
+For each event, ask yourself: "What specific news event after ${freshSince} am I citing?" If you cannot name a specific recent news anchor for that event, replace it with a different topic from the expanded scope — do not drop below 5.
 
 CRITICAL OUTPUT REQUIREMENT:
 Return ONLY a valid JSON array. No introduction. No commentary. No "Here are the results" or "Good results" or any preamble whatsoever. Your response must start with [ and end with ]. Nothing before, nothing after. No markdown code fences.
@@ -163,7 +179,7 @@ Begin search now.`;
     console.log('🔍 Sonnet raw text (last 300 chars):', rawText.substring(rawText.length - 300));
     const events = extractJsonArray(rawText);
 
-    if (!Array.isArray(events) || events.length < 3 || events.length > 5) {
+    if (!Array.isArray(events) || events.length !== 5) {
         throw new Error(`Invalid events array from Claude: got ${events.length} items`);
     }
 
